@@ -13,6 +13,14 @@ class TextChunker:
         self.chunk_size = chunk_size
         self.overlap = overlap
 
+        
+        """
+        different types of section patterns:
+            "ABSTRACT" (all caps)
+            "1. Introduction" (numbered)
+            "II. Methods" (roman numerals)
+            "abstract" (lowercase)
+        """
         # More precise section patterns
         self.section_patterns = [
             # Direct section names
