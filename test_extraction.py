@@ -18,7 +18,7 @@ def main():
         print(f"\nSuccessfully extracted text from {len(papers)} papers!")
         
         # Show summary of first paper
-        first_paper = papers[0]
+        first_paper = papers[1]
         print(f"\nSample from first paper:")
         print(f"Filename: {first_paper['filename']}")
         print(f"Title: {first_paper['title']}")
