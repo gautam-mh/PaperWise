@@ -4,6 +4,7 @@ from langchain_community.document_loaders import PyMuPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
+from langchain_ollama import OllamaLLM
 from langchain_community.llms import OpenAI
 from langchain.chains import RetrievalQA
 from langchain.prompts import PromptTemplate
@@ -168,7 +169,136 @@ class ResearchPaperRAG:
         
         return results
 
-# Test the document loading and chunking
+    
+    def setup_qa_chain(self, model_name="llama2"):
+        """
+        Set up the Question-Answering chain using Ollama LLM
+        
+        This creates the complete RAG pipeline:
+        Query → Retrieve Context → Generate Answer
+        
+        Args:
+            model_name (str): Name of the Ollama model to use
+        """
+        if self.vectorstore is None:
+            print("❌ No vector store available. Create embeddings first.")
+            return
+        
+        print(f"🤖 Setting up QA chain with Ollama model: {model_name}")
+        
+        # Initialize Ollama LLM
+        llm = OllamaLLM(
+            model=model_name,
+            temperature=0.1,  # Low temperature for more focused, factual answers
+            # base_url="http://localhost:11434"  # Default Ollama URL
+        )
+        
+        # Create custom prompt template for RAG
+        prompt_template = """
+        You are a helpful research assistant. Use the following pieces of context from research papers to answer the question at the end. 
+
+        IMPORTANT INSTRUCTIONS:
+        - Only use information from the provided context
+        - If you don't know the answer based on the context, say "I don't have enough information in the provided context to answer this question."
+        - Be specific and cite which paper/section your information comes from when possible
+        - Provide detailed, well-structured answers
+
+        Context from research papers:
+        {context}
+
+        Question: {question}
+
+        Answer: 
+        """
+        
+        PROMPT = PromptTemplate(
+            template=prompt_template,
+            input_variables=["context", "question"]
+        )
+        
+        # Create the QA chain
+        self.qa_chain = RetrievalQA.from_chain_type(
+            llm=llm,
+            chain_type="stuff",  # "stuff" means put all retrieved docs into one prompt
+            retriever=self.vectorstore.as_retriever(
+                search_type="similarity",
+                search_kwargs={"k": 4}  # Retrieve top 4 most relevant chunks
+            ),
+            chain_type_kwargs={"prompt": PROMPT},
+            return_source_documents=True  # Include source documents in response
+        )
+        
+        print("✅ QA chain setup complete!")
+        return self.qa_chain
+
+    
+    def ask_question(self, question):
+        """
+        Ask a question and get an answer using RAG
+        
+        This is the main method users will call:
+        1. Takes user question
+        2. Retrieves relevant chunks from vector store
+        3. Sends chunks + question to LLM
+        4. Returns generated answer with sources
+        
+        Args:
+            question (str): The question to ask about the documents
+            
+        Returns:
+            dict: Contains 'result' (answer) and 'source_documents' (sources)
+        """
+        if self.qa_chain is None:
+            print("❌ QA chain not set up. Run setup_qa_chain() first.")
+            return
+        
+        print(f"❓ Question: {question}")
+        print("🔍 Searching for relevant information...")
+        
+        # Get answer from the QA chain
+        # This does: retrieve → augment prompt → generate answer
+        response = self.qa_chain.invoke({"query": question})
+        
+        print(f"\n🤖 Answer:")
+        print(f"{response['result']}")
+        
+        # Show source documents for transparency
+        print(f"\n📚 Sources Used:")
+        for i, doc in enumerate(response['source_documents'], 1):
+            print(f"\n--- Source {i} ---")
+            print(f"📄 File: {doc.metadata.get('filename', 'Unknown')}")
+            print(f"📃 Page: {doc.metadata.get('page', 'Unknown')}")
+            print(f"📝 Content: {doc.page_content[:200]}...")
+        
+        return response
+
+
+    def quick_load_and_ask(self, question, vectorstore_path="vectorstore_langchain"):
+        """
+        Convenience method: Load saved vectorstore and ask a question
+        Perfect for your final user-upload system!
+        
+        Args:
+            question (str): Question to ask
+            vectorstore_path (str): Path to saved vectorstore
+        """
+        try:
+            # Load existing vectorstore
+            self.load_vectorstore(vectorstore_path)
+            
+            # Setup QA chain
+            self.setup_qa_chain()
+            
+            # Ask question
+            return self.ask_question(question)
+            
+        except Exception as e:
+            print(f"❌ Error: {e}")
+            print("Make sure you have:")
+            print("1. Created and saved a vectorstore first")
+            print("2. Ollama is running with llama2 model")
+            return None
+
 if __name__ == "__main__":
     # Initialize RAG system
     rag = ResearchPaperRAG()
@@ -205,13 +335,32 @@ if __name__ == "__main__":
     print(f"\n" + "="*50)
     print("🧪 Testing Similarity Search")
     
-    # Test queries (same as your original tests)
     test_queries = [
-        "What are planetary boundaries?",
-        "How do word vectors work?",
-        "What are the main findings of these papers?"
+        "What are the nine planetary boundaries?",
+        "How do neural networks learn word representations?"
     ]
     
     for query in test_queries:
         print(f"\n" + "-"*30)
         rag.test_similarity_search(query, k=2)
+    
+    # Set up RAG QA chain
+    print(f"\n" + "="*60)
+    print("🤖 Setting up RAG Question-Answering System")
+    
+    rag.setup_qa_chain(model_name="llama2")
+    
+    # Test RAG Q&A
+    print(f"\n" + "="*60)
+    print("🎯 Testing Complete RAG Pipeline")
+    
+    rag_questions = [
+        "What are the nine planetary boundaries and why are they important?",
+        "How do neural networks create word representations that capture semantic meaning?",
+        "What are the main conclusions and implications of these research papers?"
+    ]
+    
+    for question in rag_questions:
+        print(f"\n" + "="*80)
+        rag.ask_question(question)
+        print(f"\n" + "="*80)
