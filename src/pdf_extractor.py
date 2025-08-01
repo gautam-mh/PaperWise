@@ -1,6 +1,8 @@
-import fitz
 import os
 from typing import Dict, List
+
+# Alternative import if the above doesn't work:
+import pymupdf
 
 class PDFExtractor:
     def __init__(self):
@@ -18,7 +20,7 @@ class PDFExtractor:
         """
         try:
             # Open the PDF
-            doc = fitz.open(pdf_path)
+            doc = pymupdf.open(pdf_path)
             
             # Extract basic metadata
             metadata = doc.metadata
