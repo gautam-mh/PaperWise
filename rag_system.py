@@ -1,5 +1,4 @@
 import os
-from dotenv import load_dotenv
 from langchain_community.document_loaders import PyMuPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_huggingface import HuggingFaceEmbeddings
@@ -10,8 +9,7 @@ from langchain.chains import RetrievalQA
 from langchain.prompts import PromptTemplate
 import glob
 
-# Load environment variables
-load_dotenv()
+
 
 class ResearchPaperRAG:
     def __init__(self):
