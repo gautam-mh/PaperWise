@@ -217,7 +217,7 @@ class ResearchPaperRAG:
             
             # Create custom prompt template for RAG
             prompt_template = """
-            You are a helpful research assistant. Use the following pieces of context from research papers to answer the question at the end. 
+            You are a helpful research assistant. Use the following pieces of context from research papers to answer the question at the end. Answer precisely and do not beat around the bush. Answer pointwise wherever possible. Do not answer in a big paragraph ofmore than 5 lines. If it exceeds more than 5 lines, try to answer in next paragraph 
 
             IMPORTANT INSTRUCTIONS:
             - Only use information from the provided context
