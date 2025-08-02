@@ -1,12 +1,14 @@
 # Research Paper Reviewer – RAG System with LangChain & Ollama
 
-A full-stack web application for intelligent research paper review. Upload PDFs and ask natural language questions—powered by Retrieval-Augmented Generation (RAG), LangChain, and local LLMs via Ollama.
+A full-stack web application for intelligent research paper review—runs entirely on your local machine and can be used fully offline after setup. Upload PDFs and ask natural language questions, powered by Retrieval-Augmented Generation (RAG), LangChain, and local LLMs via Ollama. Your data stays private, and you get domain-specific answers anywhere, anytime.
 
 ## Features
 
 - **Modern Web Interface:** React (Next.js) frontend with TypeScript  
 - **Advanced RAG Pipeline:** Document chunking, semantic embeddings, and vector search  
-- **Local LLM Integration:** Private, fast, and cost-free question answering with Ollama  
+- **Local LLM Integration:** Private, fast, and cost-free question answering with Ollama
+- **Completely Offline:** Can be run fully offline—no internet required after setup, ensuring privacy and accessibility anywhere, anytime  
+- **Domain-Specific Answers:** Provides accurate, context-aware answers grounded in your uploaded research papers  
 - **Contextual Q&A:** Accurate, source-cited answers from your uploaded papers  
 - **Production-Ready:** Scalable, secure, and extensible architecture  
 
