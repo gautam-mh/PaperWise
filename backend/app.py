@@ -52,39 +52,57 @@ def upload_paper():
         if not file.filename.lower().endswith('.pdf'):
             return jsonify({'error': 'Only PDF files are supported'}), 400
         
+        # Clear uploads folder first
+        import glob
+        for old_file in glob.glob(os.path.join(app.config['UPLOAD_FOLDER'], "*.pdf")):
+            os.remove(old_file)
+        
         # Save the uploaded file
         filename = secure_filename(file.filename)
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         file.save(filepath)
         
-        # Initialize the RAG system and process the documents
-        if ResearchPaperRAG:
-            if rag_instance is None:
-                rag_instance = ResearchPaperRAG()
-            
-            # Load documents from the uploads folder
-            documents = rag_instance.load_documents(app.config['UPLOAD_FOLDER'])
-            
-            # Chunk the documents
-            chunks = rag_instance.chunk_documents()
-            
-            # Create embeddings and vectorstore
-            rag_instance.create_embeddings_and_vectorstore(chunks)
-            
-            # Setup QA chain
-            rag_instance.setup_qa_chain(model_name="llama2")
-            
-            return jsonify({
-                'message': 'Paper uploaded and processed successfully',
-                'filename': filename,
-                'status': 'ready',
-                'documents_loaded': len(documents),
-                'chunks_created': len(chunks)
-            })
-        else:
-            return jsonify({'error': 'ResearchPaperRAG not available'}), 500
-            
+        # Initialize the RAG system
+        if rag_instance is None:
+            rag_instance = ResearchPaperRAG()
+        
+       # Load documents from uploads folder
+        documents = rag_instance.load_documents(app.config['UPLOAD_FOLDER'])
+        print(f"✅ Documents loaded: {len(documents)} pages")
+        
+        # Chunk the documents
+        rag_instance.chunk_documents()
+        print(f"✅ Chunking completed: {len(rag_instance.chunks)} chunks")
+        
+        # Create embeddings and vectorstore
+        print("🧠 Starting embedding creation...")
+        rag_instance.create_embeddings_and_vectorstore()
+        print("✅ Embeddings and vectorstore created")
+        
+        # Setup QA chain
+        print("🤖 Setting up QA chain...")
+        rag_instance.setup_qa_chain(model_name="llama2")
+        print("✅ QA chain setup completed")
+        
+        # Generate chunk analysis for debugging
+        print("📊 Generating chunk analysis...")
+        rag_instance.save_chunk_analysis(f"chunk_analysis_{filename}.txt")
+        print("✅ Chunk analysis saved")
+        
+        return jsonify({
+            'message': 'Paper uploaded and processed successfully',
+            'filename': filename,
+            'status': 'ready',
+            'documents_loaded': len(documents),
+            'chunks_created': len(rag_instance.chunks)
+        })
+
     except Exception as e:
+        print(f"❌ ERROR in upload_paper: {str(e)}")
+        print(f"❌ ERROR type: {type(e).__name__}")
+        import traceback
+        print(f"❌ Full traceback:")
+        traceback.print_exc()
         return jsonify({'error': f'Upload failed: {str(e)}'}), 500
 
 @app.route('/api/query', methods=['POST'])
@@ -166,6 +184,43 @@ def reset_session():
         
     except Exception as e:
         return jsonify({'error': f'Reset failed: {str(e)}'}), 500
+
+
+@app.route('/api/inspect-chunks', methods=['GET'])
+def inspect_chunks():
+    """Generate detailed chunks inspection file"""
+    global rag_instance
+
+    try:
+        if rag_instance is None or not hasattr(rag_instance, 'chunks'):
+            return jsonify({'error': 'No chunks available. Upload documents first.'}), 400
+
+        output_file = "chunks_inspection.txt"
+        rag_instance.save_chunk_analysis(output_file)
+
+        return jsonify({
+            'message': 'Chunks inspection file generated successfully',
+            'file': output_file,
+            'total_chunks': len(rag_instance.chunks),
+            'location': f'Check your backend folder for {output_file}'
+        })
+
+    except Exception as e:
+        return jsonify({'error': f'Failed to generate inspection: {str(e)}'}), 500
+
+
+@app.route('/api/test-chunks', methods=['GET'])
+def test_chunks():
+    """Simple test endpoint to check chunks"""
+    global rag_instance
+
+    if rag_instance is None:
+        return "❌ No RAG instance available"
+
+    if not hasattr(rag_instance, 'chunks') or not rag_instance.chunks:
+        return "❌ No chunks available. Upload documents first."
+
+    return f"✅ Found {len(rag_instance.chunks)} chunks ready for inspection!"
 
 @app.errorhandler(413)
 def too_large(e):

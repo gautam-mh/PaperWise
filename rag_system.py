@@ -18,6 +18,7 @@ class ResearchPaperRAG:
         self.vectorstore = None
         self.qa_chain = None
         self.documents = []
+        self.chunks = []
         
     def load_documents(self, pdf_folder="data"):
         """
@@ -71,6 +72,8 @@ class ResearchPaperRAG:
         for i, chunk in enumerate(chunks):
             chunk.metadata['chunk_id'] = i
             chunk.metadata['chunk_size'] = len(chunk.page_content)
+
+        self.chunks = chunks
         
         print(f"📝 Created {len(chunks)} chunks")
         
@@ -86,28 +89,47 @@ class ResearchPaperRAG:
         return chunks
 
     
-    def create_embeddings_and_vectorstore(self, chunks):
+    def create_embeddings_and_vectorstore(self, chunks = None):
         """
         Create embeddings for chunks and build vector store
         """
-        print(f"🧠 Creating embeddings for {len(chunks)} chunks...")
+
+        try:
+            # Use provided chunks or stored chunks
+            if chunks is None:
+                if hasattr(self, 'chunks') and self.chunks:
+                    chunks = self.chunks
+                else:
+                    print("❌ No chunks available. Run chunk_documents() first.")
+                    return None
+            
+            print(f"🧠 Creating embeddings for {len(chunks)} chunks...")
+            
+            # Initialize HuggingFace embeddings (free, local)
+            print("🔧 Initializing HuggingFace embeddings...")
+            self.embeddings = HuggingFaceEmbeddings(
+                model_name="all-MiniLM-L6-v2",
+                model_kwargs={'device': 'cpu'},
+                encode_kwargs={'normalize_embeddings': True}
+            )
+            print("✅ HuggingFace embeddings initialized")
+            
+            # Create vector store from documents
+            print("🔍 Building FAISS vector store...")
+            self.vectorstore = FAISS.from_documents(
+                documents=chunks,
+                embedding=self.embeddings
+            )
+            
+            print("✅ Vector store created successfully!")
+            return self.vectorstore
         
-        # Initialize HuggingFace embeddings (free, local)
-        self.embeddings = HuggingFaceEmbeddings(
-            model_name="all-MiniLM-L6-v2",  # Same model as your original system!
-            model_kwargs={'device': 'cpu'},
-            encode_kwargs={'normalize_embeddings': True}
-        )
-        
-        # Create vector store from documents
-        print("🔍 Building FAISS vector store...")
-        self.vectorstore = FAISS.from_documents(
-            documents=chunks,
-            embedding=self.embeddings
-        )
-        
-        print("✅ Vector store created successfully!")
-        return self.vectorstore
+        except Exception as e:
+            print(f"❌ ERROR in create_embeddings_and_vectorstore: {str(e)}")
+            print(f"❌ ERROR type: {type(e).__name__}")
+            import traceback
+            traceback.print_exc()
+            raise e
     
     def save_vectorstore(self, save_path="vectorstore_langchain"):
         """
@@ -178,56 +200,67 @@ class ResearchPaperRAG:
         Args:
             model_name (str): Name of the Ollama model to use
         """
-        if self.vectorstore is None:
-            print("❌ No vector store available. Create embeddings first.")
-            return
-        
-        print(f"🤖 Setting up QA chain with Ollama model: {model_name}")
-        
-        # Initialize Ollama LLM
-        llm = OllamaLLM(
-            model=model_name,
-            temperature=0.1,  # Low temperature for more focused, factual answers
-            # base_url="http://localhost:11434"  # Default Ollama URL
-        )
-        
-        # Create custom prompt template for RAG
-        prompt_template = """
-        You are a helpful research assistant. Use the following pieces of context from research papers to answer the question at the end. 
+        try:
+            if self.vectorstore is None:
+                print("❌ No vector store available. Create embeddings first.")
+                return
+            
+            print(f"🤖 Setting up QA chain with Ollama model: {model_name}")
+            
+            # Initialize Ollama LLM
+            print("🔧 Initializing Ollama LLM...")
+            llm = OllamaLLM(
+                model=model_name,
+                temperature=0.1,
+            )
+            print("✅ Ollama LLM initialized")
+            
+            # Create custom prompt template for RAG
+            prompt_template = """
+            You are a helpful research assistant. Use the following pieces of context from research papers to answer the question at the end. 
 
-        IMPORTANT INSTRUCTIONS:
-        - Only use information from the provided context
-        - If you don't know the answer based on the context, say "I don't have enough information in the provided context to answer this question."
-        - Be specific and cite which paper/section your information comes from when possible
-        - Provide detailed, well-structured answers
+            IMPORTANT INSTRUCTIONS:
+            - Only use information from the provided context
+            - If you don't know the answer based on the context, say "I don't have enough information in the provided context to answer this question."
+            - Be specific and cite which paper/section your information comes from when possible
+            - Provide detailed, well-structured answers
 
-        Context from research papers:
-        {context}
+            Context from research papers:
+            {context}
 
-        Question: {question}
+            Question: {question}
 
-        Answer: 
-        """
-        
-        PROMPT = PromptTemplate(
-            template=prompt_template,
-            input_variables=["context", "question"]
-        )
-        
-        # Create the QA chain
-        self.qa_chain = RetrievalQA.from_chain_type(
-            llm=llm,
-            chain_type="stuff",  # "stuff" means put all retrieved docs into one prompt
-            retriever=self.vectorstore.as_retriever(
-                search_type="similarity",
-                search_kwargs={"k": 4}  # Retrieve top 4 most relevant chunks
-            ),
-            chain_type_kwargs={"prompt": PROMPT},
-            return_source_documents=True  # Include source documents in response
-        )
-        
-        print("✅ QA chain setup complete!")
-        return self.qa_chain
+            Answer: 
+            """
+            
+            PROMPT = PromptTemplate(
+                template=prompt_template,
+                input_variables=["context", "question"]
+            )
+            print("✅ Prompt template created")
+            
+            # Create the QA chain
+            print("🔗 Creating QA chain...")
+            self.qa_chain = RetrievalQA.from_chain_type(
+                llm=llm,
+                chain_type="stuff",
+                retriever=self.vectorstore.as_retriever(
+                    search_type="similarity",
+                    search_kwargs={"k": 4}
+                ),
+                chain_type_kwargs={"prompt": PROMPT},
+                return_source_documents=True
+            )
+            
+            print("✅ QA chain setup complete!")
+            return self.qa_chain
+            
+        except Exception as e:
+            print(f"❌ ERROR in setup_qa_chain: {str(e)}")
+            print(f"❌ ERROR type: {type(e).__name__}")
+            import traceback
+            traceback.print_exc()
+            raise e
 
     
     def ask_question(self, question):
@@ -296,6 +329,84 @@ class ResearchPaperRAG:
             print("1. Created and saved a vectorstore first")
             print("2. Ollama is running with llama2 model")
             return None
+
+
+    def save_chunk_analysis(self, output_file="chunk_analysis_detailed.txt"):
+        """Save detailed chunk analysis with full content to a file"""
+        if not hasattr(self, 'chunks') or not self.chunks:
+            with open(output_file, 'w') as f:
+                f.write("❌ No chunks available. Run chunk_documents() first.\n")
+            return
+        
+        chunks = self.chunks
+        
+        with open(output_file, 'w', encoding='utf-8') as f:
+            f.write("="*80 + "\n")
+            f.write("📊 DETAILED CHUNK ANALYSIS REPORT\n")
+            f.write("="*80 + "\n\n")
+            
+            # Basic stats
+            lengths = [len(chunk.page_content) for chunk in chunks]
+            words = [len(chunk.page_content.split()) for chunk in chunks]
+            
+            f.write("📈 QUICK STATISTICS:\n")
+            f.write(f"  Total chunks: {len(chunks)}\n")
+            f.write(f"  Avg length: {sum(lengths)/len(lengths):.0f} characters\n")
+            f.write(f"  Avg words: {sum(words)/len(words):.0f} words\n")
+            f.write(f"  Min/Max length: {min(lengths)} / {max(lengths)}\n\n")
+            
+            # By source summary
+            by_source = {}
+            for chunk in chunks:
+                source = chunk.metadata.get('source', 'unknown').split('/')[-1]
+                by_source[source] = by_source.get(source, 0) + 1
+            
+            f.write("📁 CHUNKS BY SOURCE:\n")
+            for source, count in by_source.items():
+                f.write(f"  {source}: {count} chunks\n")
+            
+            f.write("\n" + "="*80 + "\n")
+            f.write("📄 ALL CHUNKS WITH FULL CONTENT\n")
+            f.write("="*80 + "\n\n")
+            
+            # Show all chunks with full content
+            current_source = None
+            for i, chunk in enumerate(chunks):
+                source = chunk.metadata.get('source', 'unknown').split('/')[-1]
+                page = chunk.metadata.get('page', 'N/A')
+                
+                # Add source separator when source changes
+                if source != current_source:
+                    if current_source is not None:
+                        f.write("\n" + "🔄 " + "="*70 + " 🔄\n\n")
+                    f.write(f"📖 SOURCE: {source}\n")
+                    f.write("─" * 80 + "\n\n")
+                    current_source = source
+                
+                # Chunk header
+                f.write(f"┌─ CHUNK #{i+1:03d} ─────────────────────────────────────────────────────┐\n")
+                f.write(f"│ Source: {source:<30} │ Page: {str(page):<10} │\n")
+                f.write(f"│ Length: {len(chunk.page_content):<6} chars │ Words: {len(chunk.page_content.split()):<6} │ Metadata: {str(chunk.metadata):<20} │\n")
+                f.write(f"└─────────────────────────────────────────────────────────────────────┘\n\n")
+                
+                # Full chunk content
+                f.write("CONTENT:\n")
+                f.write("─" * 40 + "\n")
+                f.write(chunk.page_content)
+                f.write("\n" + "─" * 40 + "\n\n")
+                
+                # Add visual separator between chunks
+                f.write("▼" * 80 + "\n\n")
+            
+            f.write(f"\n" + "="*80 + "\n")
+            f.write(f"📊 REPORT SUMMARY:\n")
+            f.write(f"  Total chunks analyzed: {len(chunks)}\n")
+            f.write(f"  Sources processed: {len(by_source)}\n")
+            f.write(f"  Report generated: {__import__('datetime').datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+            f.write("="*80 + "\n")
+        
+        print(f"✅ Detailed chunk analysis saved to: {output_file}")
+        print(f"📄 File contains {len(chunks)} chunks with full content for manual inspection")
 
 if __name__ == "__main__":
     # Initialize RAG system
